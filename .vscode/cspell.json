@@ -1,0 +1,203 @@
+// cSpell Settings
+{
+    //-------- Code Spell Checker Configuration --------
+    // The Language locale to use when spell checking. "en", "en-US" and "en-GB" are currently supported by default.
+    "language": "en",
+
+    // Controls the maximum number of spelling errors per document.
+    "maxNumberOfProblems": 100,
+
+    // Controls the number of suggestions shown.
+    "numSuggestions": 8,
+
+    // The minimum length of a word before checking it against a dictionary.
+    "minWordLength": 4,
+
+    // Enable / Disable the spell checker.
+    "enabled": true,
+
+    // Words to add to dictionary for a workspace.
+    "words": [
+        //Repo specific
+        "Rzepka",
+
+        //PowerShell
+        "COMPUTERNAME",
+        "Clixml",
+
+        //Windows
+        "GMSA",
+        "RSAT",
+        "WSFC",
+        "WUAU",
+        "robocopy",
+        "failovers",
+        "Failback",
+        "SCCM",
+        "MECM",
+        "Remoting",
+        "Rollup",
+        "mofcomp",
+        "qsidtype",
+        "sidtype",
+
+        //ActiveDirectory
+        "ADSI",
+        "nETBIOSName",
+        "HMAC",
+
+        //Registry
+        "HKLM",
+        "HKEY",
+        "regread",
+        "Tcpip",
+        "DWORD",
+
+        //Standard SQL references
+        "DACPAC",
+        "SSMS",
+        "HADR",
+        "MSSQL",
+        "MSSQLSERVER",
+        "SQLSERVER",
+        "SQLSERVERAGENT",
+        "SQLTELEMETRY",
+        "SQLENGINE",
+        "SQLPS",
+        "ODBC",
+
+        //SQL Server system databases
+        "msdb",
+        "tempdb",
+
+        //T-SQL data types
+        "SMALLINT",
+        "TINYINT",
+        "VARCHAR",
+        "NVARCHAR",
+        "DATETIME",
+
+        //T-SQL Functions
+        "ISNULL",
+        "CHARINDEX",
+        "SUSER",
+        "SNAME",
+        "SERVERPROPERTY",
+        "DATABASEPROPERTYEX",
+        "PARSENAME",
+        "QUOTENAME",
+
+        //T-SQL Global variables
+        "MICROSOFTVERSION",
+        "PROCID",
+        "DBID",
+        "TRANCOUNT",
+
+        //T-SQL Keywords
+        "MAXDOP",
+        "ARITHABORT",
+        "ROUNDABORT",
+        "NOCOUNT",
+        "MAXRECURSION",
+        "UPDLOCK",
+        "TABLOCK",
+        "XACT",
+        "NORECOVERY",
+        "BLOCKSIZE",
+        "MAXTRANSFERSIZE",
+        "BUFFERCOUNT",
+        "THREADCOUNT",
+        "VERIFYONLY",
+        "CHECKDB",
+        "CHECKFILEGROUP",
+        "CHECKALLOC",
+        "CHECKTABLE",
+        "CHECKCATALOG",
+        "NOINDEX",
+        "INFOMSGS",
+        "ERRORMSGS",
+        "FULLSCAN",
+        "NORECOMPUTE",
+        "HEADERONLY",
+
+        //SQL Tables/Views
+        "filegroups",
+        "sysmessages",
+        "sysindexes",
+        "sysjobs",
+        "sysjobsteps",
+        "sysjobhistory",
+        "backupset",
+        "backupmediafamily",
+        "sysmanagement_shared_server_groups",
+        "sysmanagement_shared_registered_servers",
+
+        //SQL Procedures/Functions
+        "sp_MSforeachdb",
+        "sp_executesql",
+        "xp_readerrorlog",
+        "xp_fileexist",
+        "xp_sqlagent_enum_jobs",
+        "xp_sqlagent_is_starting",
+        "xp_sqlagent_notify",
+        "xp_slssqlmaint",
+        "xp_create_subdir",
+        "sp_sysmanagement_add_shared_server_group",
+        "sp_sysmanagement_add_shared_registered_server",
+
+        //SQL standard Roles
+        "bulkadmin",
+        "dbcreator",
+        "diskadmin",
+        "processadmin",
+        "securityadmin",
+        "serveradmin",
+        "setupadmin",
+        "sysadmin",
+        "db_accessadmin",
+        "db_backupoperator",
+        "db_datareader",
+        "db_datawriter",
+        "db_ddladmin",
+        "db_denydatareader",
+        "db_denydatawriter",
+        "db_owner",
+        "db_securityadmin",
+
+        //T-SQL Other
+        "filegroup",
+        "filestream",
+        "Updateability",
+        "alloc",
+        "Encryptor",
+        "autoseed",
+        "Updateable",
+
+        //Other
+        "VM",
+        "unmanaged",
+        "norestart"
+    ],
+
+    // Enable / Disable compound words like 'errormessage'
+    "allowCompoundWords": false,
+
+    // Specify paths/files to ignore.
+    "ignorePaths": [
+        "vscode-extension",    //
+        ".git",                // Ignore the .git directory
+        "*.dll",               // Ignore all .dll files.
+        "**/*.dll"             // Ignore all .dll files
+    ],
+
+    // flagWords - list of words to be always considered incorrect
+    // This is useful for offensive words and common spelling errors.
+    // For example "hte" should be "the"`
+    "flagWords": [
+        "hte"
+    ],
+
+    "enableFiletypes": [
+        "*"
+    ]
+}
