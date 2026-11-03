@@ -70,6 +70,7 @@ function Resume-SqlHadrDatabases
         $AvailabilityGroups = $Server | Get-AvailabilityGroup -Name $AvailabilityGroupName -ExcludeDistributed
     }
 
+    $ActionTaken = $false
     foreach ($AvailabilityGroup in $AvailabilityGroups)
     {
         $Databases = $AvailabilityGroup.AvailabilityDatabases | Where-Object { $true -eq $_.IsSuspended }
@@ -87,6 +88,7 @@ function Resume-SqlHadrDatabases
                     $Message = "Resuming Availability Database [$($Database.Name)]."
                     Write-Message -Stream 'Verbose' -Message $Message
                     $Database.ResumeDataMovement()
+                    $ActionTaken = $true
                 }
                 catch
                 {
@@ -102,4 +104,5 @@ function Resume-SqlHadrDatabases
             }
         }
     }
+    return $ActionTaken
 }
