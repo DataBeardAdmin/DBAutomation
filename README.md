@@ -1,20 +1,25 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+# DBAutomation
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
+## Introduction
 
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+DBAutomation provides tools and scripts for automating tasks involving
+database servers, with a primary focus on Microsoft SQL Server.
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+## License
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+Copyright (C) 2026 James N. Rzepka
+
+DBAutomation is free software licensed under the GNU General Public License,
+version 3 only.
+
+You may use, modify, and redistribute this software subject to the terms of
+the GNU GPLv3. Distributed copies and modified versions must retain applicable
+copyright and license notices. Modified versions must clearly identify relevant
+changes, and the corresponding source code must be made available when required
+by the license.
+
+Attribution to James N. Rzepka as the original author is appreciated. Modified
+versions must not be misrepresented as the original work.
+
+This software is provided without warranty. See [LICENSE](LICENSE.md) for the
+complete license terms, warranty disclaimer, and limitation of liability.
