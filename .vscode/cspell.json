@@ -176,7 +176,8 @@
         //Other
         "VM",
         "unmanaged",
-        "norestart"
+        "norestart",
+        "bootstrapper"
     ],
 
     // Enable / Disable compound words like 'errormessage'

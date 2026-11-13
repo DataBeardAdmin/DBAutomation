@@ -1,4 +1,4 @@
-Function Find-SqlComponents
+function Find-SqlComponents
 {
     [CmdletBinding()]
     param
@@ -12,12 +12,12 @@ Function Find-SqlComponents
         $Product = @('SqlServer', 'ADS', 'SSMS', 'ReportServer')
     )
 
-    Begin
+    begin
     {
         $InstalledProducts = @()
     }
 
-    Process
+    process
     {
         $ScriptBlock = {
             param
@@ -63,7 +63,8 @@ Function Find-SqlComponents
                 }
 
                 if ($Product -contains 'SSMS' -and
-                    $InstalledProgram.DisplayName -match 'Microsoft SQL Server Management Studio')
+                    $InstalledProgram.DisplayName -match 'SQL Server Management Studio' -and
+                    $InstalledProgram.DisplayName -match $([System.Version]::Parse($InstalledProgram.Version).Major))
                 {
                     [PSCustomObject]@{
                         ComputerName = $LocalHost
@@ -255,13 +256,16 @@ Function Find-SqlComponents
                                     Write-Debug "[$Time]Getting possible owners"
                                     # Get a listing of possible owners from the cluster
                                     $CimAssociatedInstance = @{
+                                        InputObject = $clusteredInstance
                                         Association = 'MSCluster_ResourceToPossibleOwner'
                                         KeyOnly = $true
                                         Verbose = $false
                                     }
-                                    $possibleOwners = $clusteredInstance |
-                                        Get-CimAssociatedInstance @CimAssociatedInstance |
-                                        ForEach-Object { [System.Net.Dns]::GetHostEntry($_.Name).Hostname }
+                                    $AssociatedInstances = Get-CimAssociatedInstance @CimAssociatedInstance
+                                    $possibleOwners = foreach ($AssociatedInstance in $AssociatedInstances)
+                                    {
+                                        [System.Net.Dns]::GetHostEntry($AssociatedInstance.Name).Hostname
+                                    }
                                     # We're done using the short name. Return the FQDN for the final output.
                                     $clusterName = [System.Net.Dns]::GetHostEntry($clusterName).Hostname
                                 }
@@ -330,7 +334,7 @@ Function Find-SqlComponents
         }
     }
 
-    End
+    end
     {
         foreach ($InstalledProduct in $InstalledProducts)
         {

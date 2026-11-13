@@ -12,7 +12,7 @@
     RootModule = 'DBAutomation.psm1'
 
     # Version number of this module.
-    ModuleVersion = '0.96.0'
+    ModuleVersion = '0.98.0'
 
     # ID used to uniquely identify this module
     GUID = '77a52005-e33e-47e1-b23c-b72f4b5485fe'
