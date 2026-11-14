@@ -1,4 +1,4 @@
-Function Set-AvailabilityGroupPrimary
+function Set-AvailabilityGroupPrimary
 {
     [CmdletBinding()]
     param
@@ -26,6 +26,7 @@ Function Set-AvailabilityGroupPrimary
     }
 
     $AvailabilityGroup = $Server | Get-AvailabilityGroup -Name $AvailabilityGroupName
+    $availabilityGroup.Refresh($true)
     if ($AvailabilityGroup.LocalReplicaRole -eq 'Primary')
     {
         Write-Message -Stream 'Warning' -Message "The replica [$SqlServer] specified is already primary for Availability Group [$AvailabilityGroupName]!  No action was taken."
