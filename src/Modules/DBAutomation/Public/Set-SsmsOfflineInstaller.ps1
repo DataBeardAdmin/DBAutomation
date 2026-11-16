@@ -28,7 +28,7 @@ function Set-SsmsOfflineInstaller
 
     if ($PSCmdlet.ParameterSetName -eq 'Version')
     {
-        $available = Get-AvailableSsmsVersions -ReleaseHistoryUrl $ReleaseHistoryUrl
+        $available = Get-AvailableSsmsVersion -ReleaseHistoryUrl $ReleaseHistoryUrl
 
         $target = $available |
             Where-Object { $_.Version -eq $Version } |

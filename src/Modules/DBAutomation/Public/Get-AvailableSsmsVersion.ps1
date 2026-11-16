@@ -1,4 +1,4 @@
-function Get-AvailableSsmsVersions
+function Get-AvailableSsmsVersion
 {
     [CmdletBinding()]
     param
@@ -9,7 +9,7 @@ function Get-AvailableSsmsVersions
 
         [Parameter()]
         [int]
-        $MaxResults = 5
+        $MaxResults = 1
     )
 
     Set-StrictMode -Version Latest
