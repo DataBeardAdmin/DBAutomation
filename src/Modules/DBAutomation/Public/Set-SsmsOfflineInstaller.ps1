@@ -1,4 +1,4 @@
-function Get-SsmsBootstrapper
+function Set-SsmsOfflineInstaller
 {
     [CmdletBinding()]
     param(
