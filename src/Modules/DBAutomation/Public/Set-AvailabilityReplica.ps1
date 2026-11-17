@@ -106,19 +106,6 @@ function Set-AvailabilityReplica
             $Message = 'When specifying the role [Primary], the TargetSqlServer will be ignored.'
             Write-Message -Stream 'Warning' -Message $Message
         }
-        #         else
-        #         {
-        #             $TargetServer = Connect-SqlServer -SqlServer $TargetSqlServer -Verbose:$VerbosePreference
-        #             if ($TargetServer.ConnectionContext.TrueName -eq $Server.ConnectionContext.TrueName)
-        #             {
-        #                 $Message = @"
-        # The target server [$TargetSqlServer] is the same as the current server provided [$SqlServer].
-        # Please provide a different [SqlServer] or [TargetSqlServer] for failover.
-        # "@
-        #                 Write-Message -Stream 'Log' -Message $Message
-        #                 throw $Message
-        #             }
-        #         }
     }
     elseif ($AsyncFailover.IsPresent -and $Role -eq 'Secondary')
     {
@@ -159,6 +146,7 @@ No failover or replica changes will be performed.
         Write-Message -Stream 'Warning' -Message $Message
     }
 
+    $AnyFailoverPerformed = $false
     foreach ($AvailabilityGroup in $AvailabilityGroups)
     {
         Write-Message -Stream 'Verbose' -Message "Processing Availability Group: [$($AvailabilityGroup.Name)]"
@@ -178,8 +166,9 @@ No failover or replica changes will be performed.
 
         if ($false -eq [string]::IsNullOrEmpty($TargetSqlServer))
         {
-            $TargetSqlServerHostName = (Split-SqlServer -SqlServer $TargetSqlServer -Verbose:$VerbosePreference).SqlServerName
-            $TargetAvailabilityReplica = Get-AvailabilityReplica -AvailabilityGroup $AvailabilityGroup -Name $TargetSqlServerHostName
+            $TargetServer = Connect-SqlServer -SqlServer $TargetSqlServer -Verbose:$VerbosePreference
+            $TargetReplicaName = $TargetServer.ConnectionContext.TrueName
+            $TargetAvailabilityReplica = $AvailabilityGroup | Get-AvailabilityReplica -Name $TargetReplicaName
         }
 
         if ($AsyncFailover.IsPresent)
@@ -227,6 +216,7 @@ No failover or replica changes will be performed for this Availability Group unl
                 }
                 Set-AvailabilityGroupPrimary @SetAvailabilityGroupPrimary -Verbose:$VerbosePreference
                 $FailoverPerformed = $true
+                $AnyFailoverPerformed = $true
             }
         }
         foreach ($AvailabilityReplica in $AvailabilityReplicas | Sort-Object -Property Name)
@@ -250,12 +240,6 @@ No failover or replica changes will be performed for this Availability Group unl
                 if ($Results.AvailabilityMode -eq 'AsynchronousCommit')
                 {
                     $AsynchronousReplicasFound = $true
-                    # if ($true -eq [string]::IsNullOrEmpty($TargetSqlServer) -and $Results.Role -ne 'Primary')
-                    # {
-                    #     $TargetSqlServer = $Results.AvailabilityReplicaServerName
-                    #     $Message = "Target server for failover not provided.  Setting target to [$TargetSqlServer] based on asynchronous replica [$($Results.Name)]."
-                    #     Write-Message -Stream 'Information' -Message $Message
-                    # }
                     $Message = "Changing replica [$($Results.Name)] to Synchronous commit, Automatic failover."
                     Write-Message -Stream 'Information' -Message $Message
 
@@ -296,11 +280,6 @@ No failover or replica changes will be performed for this Availability Group unl
                     }
                     $AvailabilityReplica = Get-AvailabilityReplicaServerName @GetAvailabilityReplicaServerName
 
-                    # $SetAvailabilityGroupPrimary = @{
-                    #     SqlServer = $TargetSqlServer
-                    #     AvailabilityGroupName = $AvailabilityGroup.Name
-                    # }
-                    # Set-AvailabilityGroupPrimary @SetAvailabilityGroupPrimary -Verbose:$VerbosePreference
                     $SetAvailabilityReplica = @{
                         SqlServer = $TargetSqlServer
                         Role = 'Primary'
@@ -308,6 +287,7 @@ No failover or replica changes will be performed for this Availability Group unl
                     }
                     Set-AvailabilityReplica @SetAvailabilityReplica -Verbose:$VerbosePreference
                     $FailoverPerformed = $true
+                    $AnyFailoverPerformed = $true
                 }
             }
         }
@@ -360,7 +340,7 @@ No failover or replica changes will be performed for this Availability Group unl
         }
     }
 
-    if ($false -eq $AsyncFailover.IsPresent)
+    if ($false -eq $AsyncFailover.IsPresent -and $AnyFailoverPerformed)
     {
         # This is useful for recursive calls as all the AGs will be validated in the parent session.
         if ((Get-PSCallStack)[1].Command -ne $MyInvocation.MyCommand)
