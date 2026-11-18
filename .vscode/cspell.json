@@ -40,6 +40,8 @@
         "mofcomp",
         "qsidtype",
         "sidtype",
+        "certutil",
+        "addstore",
 
         //ActiveDirectory
         "ADSI",
