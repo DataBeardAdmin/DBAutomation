@@ -104,5 +104,9 @@ function Resume-SqlHadrDatabases
             }
         }
     }
-    return $ActionTaken
+    if ($ActionTaken)
+    {
+        Write-Message -Stream 'Verbose' -Message 'Waiting for Availability Group synchronization after resuming databases...'
+        Start-Sleep -Seconds 30
+    }
 }

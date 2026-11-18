@@ -44,20 +44,19 @@ function Wait-AvailabilityGroupSync
     {
         if ($StartTime.AddSeconds($TimeoutSeconds - 30) -lt [DateTime]::Now)
         {
-            $ActionTaken = Resume-SqlHadrDatabases @Params
-            if ($ActionTaken)
-            {
-                Write-Message -Stream 'Verbose' -Message 'Waiting for Availability Group synchronization after resuming databases...'
-            }
-            # We're only avoiding the message above if we took action to resume databases.
-            # Otherwise, We'll still wait for the full timeout (we took action 30 seconds early).
-            Start-Sleep -Seconds 30
+            Resume-SqlHadrDatabases @Params
 
-            if (Get-AvailabilityGroupsNotSynchronized @Params)
+            if ((Get-AvailabilityGroupsNotSynchronized @Params) -and
+                $StartTime.AddSeconds($TimeoutSeconds) -lt [DateTime]::Now)
             {
                 $Message = 'Timeout occurred waiting for Availability Group synchronization.'
                 Write-Message -Stream 'Log' -Message $Message
                 throw $Message
+            }
+            else
+            {
+                Write-Message -Stream 'Verbose' -Message 'Availability Groups not synchronized. Waiting for synchronization...'
+                Start-Sleep -Seconds 30
             }
         }
         else
