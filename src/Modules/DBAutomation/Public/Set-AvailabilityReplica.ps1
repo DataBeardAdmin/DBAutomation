@@ -33,6 +33,13 @@
     This parameter is only used when Role is specified as 'Secondary'. This designates which secondary replica to
     move the Availability Group(s) to.
 
+    .PARAMETER AsyncFailover
+    When specified, this parameter will allow the function to perform a failover to a secondary replica that is
+    configured as Asynchronous. It will change the Availability Mode of the secondary to Synchronous, perform the
+    failover, and then change the Availability Mode to Asynchronous on the previous primary.
+    Note: This will change *ALL* async replicas to synchronous for the specified Availability Group(s), wait for
+    replication to synchronize and then change *ALL* previously synchronous replicas to asynchronous after the failover.
+
     .EXAMPLE
     #This will ensure that SqlServer01 is the secondary for *all* synchronous Availability Groups.
     Set-AvailabilityReplica -SqlServer 'SqlServer01' -Verbose -InformationAction 'Continue'
