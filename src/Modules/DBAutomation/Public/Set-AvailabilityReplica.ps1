@@ -33,6 +33,13 @@
     This parameter is only used when Role is specified as 'Secondary'. This designates which secondary replica to
     move the Availability Group(s) to.
 
+    .PARAMETER AsyncFailover
+    When specified, this parameter will allow the function to perform a failover to a secondary replica that is
+    configured as Asynchronous. It will change the Availability Mode of the secondary to Synchronous, perform the
+    failover, and then change the Availability Mode to Asynchronous on the previous primary.
+    Note: This will change *ALL* async replicas to synchronous for the specified Availability Group(s), wait for
+    replication to synchronize and then change *ALL* previously synchronous replicas to asynchronous after the failover.
+
     .EXAMPLE
     #This will ensure that SqlServer01 is the secondary for *all* synchronous Availability Groups.
     Set-AvailabilityReplica -SqlServer 'SqlServer01' -Verbose -InformationAction 'Continue'
@@ -46,7 +53,7 @@
     Set-AvailabilityReplica -SqlServer 'SqlServer01' -TargetSqlServer 'SqlServer02' -Verbose -InformationAction 'Continue'
 
 #>
-Function Set-AvailabilityReplica
+function Set-AvailabilityReplica
 {
     [CmdletBinding()]
     param
@@ -78,14 +85,12 @@ Function Set-AvailabilityReplica
 
         [Parameter()]
         [string]
-        $TargetSqlServer
-    )
+        $TargetSqlServer,
 
-    if ($Role -eq 'Primary' -and $false -eq [string]::IsNullOrEmpty($TargetSqlServer))
-    {
-        $Message = 'When specifying the role [Primary], the TargetSqlServer will be ignored.'
-        Write-Message -Stream 'Warning' -Message $Message
-    }
+        [Parameter()]
+        [Switch]
+        $AsyncFailover
+    )
 
     if ($PSCmdlet.ParameterSetName -eq 'ComputerName')
     {
@@ -99,6 +104,26 @@ Function Set-AvailabilityReplica
     else
     {
         $SqlServer = $Server.ConnectionContext.ServerInstance
+    }
+
+    if ($false -eq [string]::IsNullOrEmpty($TargetSqlServer))
+    {
+        if ($Role -eq 'Primary')
+        {
+            $Message = 'When specifying the role [Primary], the TargetSqlServer will be ignored.'
+            Write-Message -Stream 'Warning' -Message $Message
+        }
+    }
+    elseif ($AsyncFailover.IsPresent -and $Role -eq 'Secondary')
+    {
+        $Message = 'When specifying [AsyncFailover], the TargetSqlServer must be provided.'
+        Write-Message -Stream 'Log' -Message $Message
+        throw $Message
+    }
+
+    if ($Role -eq 'Primary')
+    {
+        $TargetSqlServer = $SqlServer
     }
 
     $CurrentRole = switch ($Role)
@@ -115,11 +140,23 @@ Function Set-AvailabilityReplica
         Write-Message -Stream 'Verbose' -Message $Message
     }
     $Server.AvailabilityGroups.Refresh($true)
-    $AvailabilityGroups = Get-AvailabilityGroup -Server $Server -Name $AvailabilityGroupName |
+    $AvailabilityGroups = $Server |
+        Get-AvailabilityGroup -Name $AvailabilityGroupName -ExcludeDistributed -Verbose:$VerbosePreference |
         Where-Object -Property LocalReplicaRole -EQ $CurrentRole
 
+    if ($AsyncFailover.IsPresent -and $AvailabilityGroups.Count -eq 0)
+    {
+        $Message = @"
+The server [$SqlServer] is already the [$Role] for all Availability Groups but [AsyncFailover] was specified.
+No failover or replica changes will be performed.
+"@
+        Write-Message -Stream 'Warning' -Message $Message
+    }
+
+    $AnyFailoverPerformed = $false
     foreach ($AvailabilityGroup in $AvailabilityGroups)
     {
+        Write-Message -Stream 'Verbose' -Message "Processing Availability Group: [$($AvailabilityGroup.Name)]"
         $Listener = $AvailabilityGroup.AvailabilityGroupListeners[0].Name
         $SqlServerName = (Split-SqlServer -SqlServer $SqlServer -Verbose:$VerbosePreference).SqlServerName
         if ($Listener -eq $SqlServerName)
@@ -132,106 +169,228 @@ Function Set-AvailabilityReplica
 
         $AvailabilityGroup.AvailabilityReplicas.Refresh($true)
         $AvailabilityReplicas = $AvailabilityGroup.AvailabilityReplicas
-        # This test will pass if ANY replica is set to Synchronous. Further filtering is applied below.
-        if ($AvailabilityReplicas.AvailabilityMode -eq 'SynchronousCommit')
+        $FailoverPerformed = $false
+
+        if ($false -eq [string]::IsNullOrEmpty($TargetSqlServer))
         {
-            if ($Role -eq 'Secondary')
+            $TargetServer = Connect-SqlServer -SqlServer $TargetSqlServer -Verbose:$VerbosePreference
+            $TargetReplicaName = $TargetServer.ConnectionContext.TrueName
+            $TargetAvailabilityReplica = $AvailabilityGroup | Get-AvailabilityReplica -Name $TargetReplicaName
+        }
+
+        if ($AsyncFailover.IsPresent)
+        {
+            # We need to cache the current state as we'll be changing the state of the replicas as we go
+            $ReplicaProperties = @()
+            $AsynchronousReplicasFound = $false
+            $GetAvailabilityReplicaProperties = @{
+                Properties = @(
+                    'Name',
+                    'AvailabilityMode',
+                    'FailoverMode',
+                    'Role',
+                    'AvailabilityReplicaServerName'
+                )
+                Verbose = $VerbosePreference
+            }
+
+            if ($TargetAvailabilityReplica.AvailabilityMode -eq 'SynchronousCommit')
             {
-                Write-Message -Stream 'Verbose' -Message "Processing Availability Group: [$($AvailabilityGroup.Name)]"
-
-                if ([String]::IsNullOrEmpty($TargetSqlServer))
-                {
-                    Write-Message -Stream 'Verbose' -Message "Searching for synchronous replicas with the role [$Role]"
-                    $AvailabilityReplicas = $AvailabilityReplicas | Where-Object -FilterScript {
-                        $_.AvailabilityMode -eq 'SynchronousCommit' -and
-                        $_.Role -eq $Role
-                    } | Sort-Object -Property Name
-
-                    if ($AvailabilityReplicas.Count -gt 0)
-                    {
-                        foreach ($AvailabilityReplica in $AvailabilityReplicas)
-                        {
-                            $Message = "Replica [$($AvailabilityReplica.Name)] state [$($AvailabilityReplica.ConnectionState)]"
-                            Write-Message -Stream 'Debug' -Message $Message
-                        }
-
-                        $GetAvailabilityReplicaServerName = @{
-                            Server = $Server
-                            AvailabilityGroupName = $AvailabilityGroup.Name
-                            AvailabilityReplicaName = $AvailabilityReplicas[0].Name
-                        }
-                        $AvailabilityReplica = Get-AvailabilityReplicaServerName @GetAvailabilityReplicaServerName
-
-                        $SetAvailabilityReplica = @{
-                            SqlServer = $AvailabilityReplica
-                            Role = 'Primary'
-                            AvailabilityGroupName = $AvailabilityGroup.Name
-                        }
-                        Set-AvailabilityReplica @SetAvailabilityReplica -Verbose:$VerbosePreference
-                    }
+                $Message = @"
+The target server [$TargetSqlServer] is [SynchronousCommit] for [$($AvailabilityGroup.Name)] but [AsyncFailover] was specified.
+No failover or replica changes will be performed for this Availability Group.
+"@
+                Write-Message -Stream 'Warning' -Message $Message
+                continue
+            }
+        }
+        else
+        {
+            if ($TargetAvailabilityReplica.AvailabilityMode -eq 'AsynchronousCommit')
+            {
+                $Message = @"
+The target server [$TargetSqlServer] is [AsynchronousCommit] for [$($AvailabilityGroup.Name)].
+No failover or replica changes will be performed for this Availability Group unless [AsyncFailover] is specified.
+"@
+                Write-Message -Stream 'Warning' -Message $Message
+                continue
+            }
+            elseif ($Role -eq 'Primary' -or $false -eq [string]::IsNullOrEmpty($TargetSqlServer))
+            {
+                $SetAvailabilityGroupPrimary = @{
+                    SqlServer = $TargetSqlServer
+                    AvailabilityGroupName = $AvailabilityGroup.Name
                 }
-                else
+                Set-AvailabilityGroupPrimary @SetAvailabilityGroupPrimary -Verbose:$VerbosePreference
+                $FailoverPerformed = $true
+                $AnyFailoverPerformed = $true
+            }
+        }
+        foreach ($AvailabilityReplica in $AvailabilityReplicas | Sort-Object -Property Name)
+        {
+            if ($false -eq $FailoverPerformed)
+            {
+                $Message = 'Replica [{0}] state [{1}] role [{2}] mode [{3}]' `
+                    -f $AvailabilityReplica.Name, `
+                    $AvailabilityReplica.ConnectionState, `
+                    $AvailabilityReplica.Role, `
+                    $AvailabilityReplica.AvailabilityMode
+                Write-Message -Stream 'Debug' -Message $Message
+            }
+            if ($AsyncFailover.IsPresent)
+            {
+                $Results = $AvailabilityReplica |
+                    Get-AvailabilityReplicaProperties @GetAvailabilityReplicaProperties
+
+                $ReplicaProperties += $Results
+
+                if ($Results.AvailabilityMode -eq 'AsynchronousCommit')
                 {
+                    $AsynchronousReplicasFound = $true
+                    $Message = "Changing replica [$($Results.Name)] to Synchronous commit, Automatic failover."
+                    Write-Message -Stream 'Information' -Message $Message
+
+                    $GetAvailabilityReplicaServerName = @{
+                        Server = $Server
+                        AvailabilityGroupName = $AvailabilityGroup.Name
+                        AvailabilityReplicaName = $AvailabilityGroup.PrimaryReplicaServerName
+                    }
+                    $PrimaryReplica = Get-AvailabilityReplicaServerName @GetAvailabilityReplicaServerName
+
+                    $SetAvailabilityReplicaProperties = @{
+                        SqlServer = $PrimaryReplica
+                        AvailabilityGroupName = $AvailabilityGroup.Name
+                        AvailabilityReplicaName = $Results.Name
+                        Properties = @{
+                            AvailabilityMode = 'SynchronousCommit'
+                            FailoverMode = 'Automatic'
+                        }
+                        Verbose = $VerbosePreference
+                    }
+
+                    Set-AvailabilityReplicaProperties @SetAvailabilityReplicaProperties
+                }
+            }
+            else
+            {
+                if ($false -eq $FailoverPerformed -and
+                    $AvailabilityReplica.Role -eq 'Secondary' -and
+                    $AvailabilityReplica.AvailabilityMode -eq 'SynchronousCommit' -and
+                    $Role -eq 'Secondary' -and
+                    [String]::IsNullOrEmpty($TargetSqlServer))
+                {
+                    $TargetSqlServer = $AvailabilityReplica.Name
+                    $GetAvailabilityReplicaServerName = @{
+                        Server = $Server
+                        AvailabilityGroupName = $AvailabilityGroup.Name
+                        AvailabilityReplicaName = $TargetSqlServer
+                    }
+                    $AvailabilityReplica = Get-AvailabilityReplicaServerName @GetAvailabilityReplicaServerName
+
                     $SetAvailabilityReplica = @{
                         SqlServer = $TargetSqlServer
                         Role = 'Primary'
                         AvailabilityGroupName = $AvailabilityGroup.Name
                     }
                     Set-AvailabilityReplica @SetAvailabilityReplica -Verbose:$VerbosePreference
+                    $FailoverPerformed = $true
+                    $AnyFailoverPerformed = $true
+                }
+            }
+        }
+
+        if ($AsyncFailover.IsPresent)
+        {
+            if ($true -eq $AsynchronousReplicasFound)
+            {
+                $WaitAvailabilityGroupSync = @{
+                    SqlServer = $TargetSqlServer
+                    AvailabilityGroupName = $AvailabilityGroup.Name
+                    TimeoutSeconds = 1800
+                    Verbose = $VerbosePreference
+                }
+
+                Wait-AvailabilityGroupSync @WaitAvailabilityGroupSync
+
+                $SetAvailabilityReplica = @{
+                    SqlServer = $TargetSqlServer
+                    Role = 'Primary'
+                    AvailabilityGroupName = $AvailabilityGroup.Name
+                    Verbose = $VerbosePreference
+                }
+                Set-AvailabilityReplica @SetAvailabilityReplica
+
+                foreach ($Replica in $ReplicaProperties | Where-Object { $_.AvailabilityMode -eq 'SynchronousCommit' })
+                {
+                    $Message = "Changing replica [$($Replica.Name)] to Asynchronous commit, Manual failover."
+                    Write-Message -Stream 'Information' -Message $Message
+
+                    $SetAvailabilityReplicaProperties = @{
+                        SqlServer = $TargetSqlServer
+                        AvailabilityGroupName = $AvailabilityGroup.Name
+                        AvailabilityReplicaName = $Replica.Name
+                        Properties = @{
+                            AvailabilityMode = 'AsynchronousCommit'
+                            FailoverMode = 'Manual'
+                        }
+                        Verbose = $VerbosePreference
+                    }
+
+                    Set-AvailabilityReplicaProperties @SetAvailabilityReplicaProperties
                 }
             }
             else
             {
-                $SetAvailabilityGroupPrimary = @{
-                    Server = $Server
-                    AvailabilityGroupName = $AvailabilityGroup.Name
-                }
-                Set-AvailabilityGroupPrimary @SetAvailabilityGroupPrimary -Verbose:$VerbosePreference
+                $Message = "No asynchronous replicas found for Availability Group [$($AvailabilityGroup.Name)].  No failover will be performed."
+                Write-Message -Stream 'Warning' -Message $Message
             }
         }
     }
 
-    # This is useful for recursive calls as all the AGs will be validated in the parent session.
-    if ((Get-PSCallStack)[1].Command -ne $MyInvocation.MyCommand)
+    if ($false -eq $AsyncFailover.IsPresent -and $AnyFailoverPerformed)
     {
-        Write-Message -Stream 'Verbose' -Message 'Validating Availability Group failover status...'
-        $Server.AvailabilityGroups.Refresh($true)
-        $AvailabilityGroups = Get-AvailabilityGroup -Server $Server -Name $AvailabilityGroupName |
-            Where-Object -FilterScript { $_.LocalReplicaRole -EQ $CurrentRole -and $false -eq $_.IsDistributedAvailabilityGroup }
-
-        if ($AvailabilityGroups.count -gt 0)
+        # This is useful for recursive calls as all the AGs will be validated in the parent session.
+        if ((Get-PSCallStack)[1].Command -ne $MyInvocation.MyCommand)
         {
-            $AGsNotSynced = $false
-            foreach ($AvailabilityGroup in $AvailabilityGroups)
-            {
-                Write-Message -Stream 'Verbose' -Message "Processing Availability Group: [$($AvailabilityGroup.Name)]"
+            Write-Message -Stream 'Verbose' -Message 'Validating Availability Group failover status...'
+            $Server.AvailabilityGroups.Refresh($true)
+            $AvailabilityGroups = Get-AvailabilityGroup -Server $Server -Name $AvailabilityGroupName |
+                Where-Object -FilterScript { $_.LocalReplicaRole -eq $CurrentRole -and $false -eq $_.IsDistributedAvailabilityGroup }
 
-                if (Get-AvailabilityGroupsNotSynchronized -Server $Server -AvailabilityGroupName $AvailabilityGroup.Name)
+            if ($AvailabilityGroups.count -gt 0)
+            {
+                $AGsNotSynced = $false
+                foreach ($AvailabilityGroup in $AvailabilityGroups)
                 {
-                    #The availability group is set to synchronous but has at least one database that is not synchronized
-                    $Message = "Availability Group [$($AvailabilityGroup.Name)] has not failed over because the databases are not all in sync."
-                    Write-Message -Stream 'Error' -Message $Message
-                    $AGsNotSynced = $true
+                    Write-Message -Stream 'Verbose' -Message "Processing Availability Group: [$($AvailabilityGroup.Name)]"
+
+                    if (Get-AvailabilityGroupsNotSynchronized -Server $Server -AvailabilityGroupName $AvailabilityGroup.Name)
+                    {
+                        #The availability group is set to synchronous but has at least one database that is not synchronized
+                        $Message = "Availability Group [$($AvailabilityGroup.Name)] has not failed over because the databases are not all in sync."
+                        Write-Message -Stream 'Error' -Message $Message
+                        $AGsNotSynced = $true
+                    }
+                    elseif ($AvailabilityGroup.AvailabilityReplicas.AvailabilityMode -eq 'AsynchronousCommit')
+                    {
+                        #At least one replica is set to asynchronous and requires manual intervention.
+                        $Message = "Availability Group [$($AvailabilityGroup.Name)] is [AsynchronousCommit] and was not moved."
+                        Write-Message -Stream 'Warning' -Message $Message
+                    }
+                    else
+                    {
+                        Write-Message -Stream 'Warning' -Message "Availability Group [$($AvailabilityGroup.Name)] has not failed over but the databases are all in sync. This *Should* fail over automatically when the reboot takes place."
+                    }
                 }
-                elseif ($AvailabilityGroup.AvailabilityReplicas.AvailabilityMode -eq 'AsynchronousCommit')
+                if ($AGsNotSynced)
                 {
-                    #At least one replica is set to asynchronous and requires manual intervention.
-                    $Message = "Availability Group [$($AvailabilityGroup.Name)] is [AsynchronousCommit] and was not moved."
-                    Write-Message -Stream 'Warning' -Message $Message
-                }
-                else
-                {
-                    Write-Message -Stream 'Warning' -Message "Availability Group [$($AvailabilityGroup.Name)] has not failed over but the databases are all in sync. This *Should* fail over automatically when the reboot takes place."
+                    throw "There are still Availability Groups hosted on the target server which couldn't be moved automatically."
                 }
             }
-            if ($AGsNotSynced)
+            else
             {
-                throw "There are still Availability Groups hosted on the target server which couldn't be moved automatically."
+                Write-Message -Stream 'Verbose' -Message 'All selected groups have been validated.'
             }
-        }
-        else
-        {
-            Write-Message -Stream 'Verbose' -Message 'All selected groups have been validated.'
         }
     }
 }

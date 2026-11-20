@@ -16,7 +16,7 @@ function Wait-AvailabilityReplicaConnection
         $AvailabilityGroupName,
 
         [Parameter()]
-        [ValidateRange(1, 600)]
+        [ValidateRange(1, 3600)]
         [Int]
         $TimeoutSeconds = 600
     )
