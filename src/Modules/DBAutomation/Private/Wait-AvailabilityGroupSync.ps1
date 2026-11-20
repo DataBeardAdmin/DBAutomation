@@ -16,7 +16,7 @@ function Wait-AvailabilityGroupSync
         $AvailabilityGroupName,
 
         [Parameter()]
-        [ValidateRange(1, 600)]
+        [ValidateRange(1, 3600)]
         [Int]
         $TimeoutSeconds = 600
     )
@@ -42,17 +42,21 @@ function Wait-AvailabilityGroupSync
     Wait-AvailabilityReplicaConnection @Params -TimeoutSeconds $TimeoutSeconds
     while (Get-AvailabilityGroupsNotSynchronized @Params)
     {
-        if ($StartTime.AddSeconds($TimeoutSeconds) -lt [DateTime]::Now)
+        if ($StartTime.AddSeconds($TimeoutSeconds - 30) -lt [DateTime]::Now)
         {
             Resume-SqlHadrDatabases @Params
-            Write-Message -Stream 'Verbose' -Message 'Waiting for Availability Group synchronization after resuming databases...'
-            Start-Sleep -Seconds 30
 
-            if (Get-AvailabilityGroupsNotSynchronized @Params)
+            if ((Get-AvailabilityGroupsNotSynchronized @Params) -and
+                $StartTime.AddSeconds($TimeoutSeconds) -lt [DateTime]::Now)
             {
                 $Message = 'Timeout occurred waiting for Availability Group synchronization.'
                 Write-Message -Stream 'Log' -Message $Message
                 throw $Message
+            }
+            else
+            {
+                Write-Message -Stream 'Verbose' -Message 'Availability Groups not synchronized. Waiting for synchronization...'
+                Start-Sleep -Seconds 30
             }
         }
         else
