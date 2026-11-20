@@ -41,6 +41,9 @@
     .PARAMETER NoRestart
     This switch is targeted for SSMS installs and will not reboot the target computer(s) before or after the install(s).
 
+    .PARAMETER InstallPath
+    This switch is targeted for SSMS installs only and allows you to chose the install path.
+
     .NOTES
     This is often used in combination with 'Sync-Folders' which will assist in copying the patches from a remote
     source to a local directory.
@@ -95,19 +98,18 @@ function Install-SqlUpdate
 
         [Parameter()]
         [Switch]
-        $NoRestart
+        $NoRestart,
+
+        [Parameter()]
+        [string]
+        $InstallPath
     )
 
-    if ($false -eq $UseMECM.IsPresent)
+    if ($false -eq $UseMECM.IsPresent -and [string]::IsNullOrEmpty($UpdatePath))
     {
-        if ([string]::IsNullOrEmpty($UpdatePath))
-        {
-            $Message = '[UpdatePath] must be specified if [UseMECM] is not specified!'
-            Write-Message -Stream 'Log' -Message $Message
-            throw $message
-        }
-        $InstallArguments = Get-SqlInstallArguments -Product $Product
-        $ExitCodes = Get-SqlExitCodes -Product $Product
+        $Message = '[UpdatePath] must be specified if [UseMECM] is not specified!'
+        Write-Message -Stream 'Log' -Message $Message
+        throw $message
     }
 
     if ($PSCmdlet.ParameterSetName -eq 'SqlServer')
@@ -195,12 +197,16 @@ function Install-SqlUpdate
             }
             else
             {
-                Write-Message -Stream 'Verbose' -Message "Connecting to [$Computer], looking for local update cache."
-
                 # Gather a listing of updates that are available to be applied, sorted by version
                 $GetAvailableUpdates = @{
                     ComputerName = $Computer
                     UpdatePath = $UpdatePath
+                }
+                if ($Product -eq 'SSMS')
+                {
+                    $GetAvailableUpdates += @{
+                        SingleUpdate = $true
+                    }
                 }
                 [System.Array]$availableUpdates = Get-AvailableUpdates @GetAvailableUpdates -Verbose:$VerbosePreference
             }
@@ -383,33 +389,63 @@ function Install-SqlUpdate
                     #Region Patch preparation
                     if ($CheckVersion)
                     {
-                        $ProductInfo = Get-ProductInfo -ComputerName $Computer -Product $Product -Verbose:$VerbosePreference
-                        $LocalVersionString = $ProductInfo.LocalVersion.ToString()
+                        $GetProductInfo = @{
+                            ComputerName = $Computer
+                            Product = $Product
+                        }
+                        if ($Product -eq 'SSMS')
+                        {
+                            #Get-ProductInfo throws an error if the product is not installed, so we need to ignore that error for this scenario.
+                            $GetProductInfo += @{
+                                ErrorAction = [System.Management.Automation.ActionPreference]'SilentlyContinue'
+                            }
+                        }
+                        $ProductInfo = Get-ProductInfo @GetProductInfo -Verbose:$VerbosePreference
+                        $LocalVersion = $ProductInfo.LocalVersion
+                        if ($false -eq [string]::IsNullOrEmpty($LocalVersion))
+                        {
+                            $LocalVersionString = $LocalVersion.ToString()
+                        }
+
+                        if ($Product -eq 'SSMS' -and
+                            ($LocalVersion.Major -ne $update.PatchVersion.Major -or $true -eq [string]::IsNullOrEmpty($LocalVersion)))
+                        {
+                            $Mode = 'Install'
+                            $LocalVersion = [System.Version]"$($update.PatchVersion.Major).0"
+                            $DebugMessage = 'Installer Version {0}'
+                        }
+                        else
+                        {
+                            # If SSMS is already installed, we will treat this as an update.
+                            $Mode = 'Update'
+                            $DebugMessage = "Server Version: $LocalVersionString, Patch Version {0}"
+                        }
 
                         if ($false -eq [string]::IsNullOrEmpty($ProductInfo.SqlServer))
                         {
                             $SqlServerInstance = $ProductInfo.SqlServer
                         }
                         $RestartSqlServerParams = $ProductInfo.RestartSqlServerParams
+                        Write-Message -Stream 'Debug' -Message "Mode: [$Mode]"
                     }
                     #endregion
 
                     if ($Product -eq 'ReportServer' -and $ProductInfo.PatchLevel.Major -le 13)
                     {
-                        $Message = 'Product [ReportServer] is only supported for stand-alone Report Server (2016 and higher).'
+                        $Message = 'Product [ReportServer] is only supported for stand-alone Report Server (2017 and higher).'
                         Write-Message -Stream 'Log' -Message $Message
                         throw $Message
                     }
 
-                    if ($ProductInfo.LocalVersion.Major -ne $updateVersion.Major)
+                    if ($LocalVersion.Major -ne $updateVersion.Major)
                     {
                         Write-Message -Stream 'Verbose' -Message "The server's major version is not the same as the patch file [$FilePath]."
                         Write-Message -Stream 'Debug' -Message "Server Version: $LocalVersionString, Patch Version $updateVersionString"
                         $CheckVersion = $false
                     }
                     elseif (
-                        ($ProductInfo.LocalVersion.Build -ge $updateVersion.Build -and $Product -ne 'SSMS') -or
-                        ($ProductInfo.LocalVersion -ge $updateVersion -and $Product -eq 'SSMS'))
+                        ($LocalVersion.Build -ge $updateVersion.Build -and $Product -ne 'SSMS') -or
+                        ($LocalVersion -ge $updateVersion -and $Product -eq 'SSMS'))
                     {
                         Write-Message -Stream 'Verbose' -Message "The server's version is greater than or equal to the version of the patch file [$FilePath]."
                         Write-Message -Stream 'Debug' -Message "Server Version: $LocalVersionString, Patch Version $updateVersionString"
@@ -418,7 +454,7 @@ function Install-SqlUpdate
                     else
                     {
                         Write-Message -Stream 'Verbose' -Message "Getting ready to apply [$FilePath]."
-                        Write-Message -Stream 'Debug' -Message "Server Version: $LocalVersionString, Patch Version $updateVersionString"
+                        Write-Message -Stream 'Debug' -Message ($DebugMessage -f $updateVersionString)
 
                         #Verify the computer is ready for install.
                         if ($RestartCheck)
@@ -455,12 +491,22 @@ function Install-SqlUpdate
                             }
                         }
 
+                        $GetSqlInstallArguments = @{
+                            Product = $Product
+                            MajorVersion = $LocalVersion.Major
+                            Mode = $Mode
+                            InstallPath = $InstallPath
+                        }
+                        $InstallArguments = Get-SqlInstallArguments @GetSqlInstallArguments
+                        $ExitCodes = Get-SqlExitCodes -Product $Product
+
                         #Region FileSystem Patch
                         # splat parameters to Start-Process
                         $startProcessParams = @{
                             FilePath = $FilePath
                             ArgumentList = $InstallArguments
                             Verb = 'RunAs'
+                            WindowStyle = 'Hidden'
                             Wait = $true
                             PassThru = $true
                         }
@@ -471,6 +517,36 @@ function Install-SqlUpdate
 
                         #Perform the install.
                         $ExitCode = Invoke-Command -ScriptBlock {
+                            $InstallFolder = Split-Path -Path $using:FilePath -Parent
+                            $certPath = Join-Path $InstallFolder 'certificates'
+                            if ($using:update.Type -eq 'Manifest' -and $true -eq (Test-Path $certPath -PathType Container))
+                            {
+                                $certs = @(
+                                    'manifestRootCertificate.cer',
+                                    'manifestCounterSignRootCertificate.cer',
+                                    'vs_installer_opc.RootCertificate.cer',
+                                    'Microsoft Windows Code Signing PCA 2024.crt'
+                                )
+
+                                foreach ($cert in $certs)
+                                {
+                                    $fullPath = Join-Path $certPath $cert
+
+                                    if ($true -eq (Test-Path $fullPath) -and $fullPath -match '\.cer$')
+                                    {
+                                        certutil.exe -addstore -f 'Root' $fullPath | Out-Null
+                                    }
+                                    elseif ($true -eq (Test-Path $fullPath) -and $fullPath -match '\.crt$')
+                                    {
+                                        certutil.exe -addstore -f CA $fullPath | Out-Null
+                                    }
+                                    else
+                                    {
+                                        Write-Warning "Certificate not found: $fullPath"
+                                    }
+                                }
+                            }
+
                             $process = Start-Process @using:startProcessParams
                             return $process.ExitCode
                         } -ComputerName $Computer -ErrorAction Stop

@@ -40,6 +40,8 @@
         "mofcomp",
         "qsidtype",
         "sidtype",
+        "certutil",
+        "addstore",
 
         //ActiveDirectory
         "ADSI",
@@ -176,7 +178,8 @@
         //Other
         "VM",
         "unmanaged",
-        "norestart"
+        "norestart",
+        "bootstrapper"
     ],
 
     // Enable / Disable compound words like 'errormessage'

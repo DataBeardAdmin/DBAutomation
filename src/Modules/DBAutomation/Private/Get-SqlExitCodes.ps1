@@ -11,7 +11,7 @@ function Get-SqlExitCodes
 
     $ExitCodes = @(
         @{
-            Code = '0' 
+            Code = '0'
             resultString = 'Success'
         }
     )
@@ -26,7 +26,7 @@ function Get-SqlExitCodes
         )
     }
 
-    if ($Product -in @('SqlServer', 'ReportServer'))
+    if ($Product -in @('SqlServer', 'ReportServer', 'SSMS'))
     {
         $ExitCodes += @(
             @{
@@ -40,9 +40,9 @@ function Get-SqlExitCodes
     if ($Product -eq 'SqlServer')
     {
         $ExitCodes += @(
-            @{ 
+            @{
                 #This should not occur as we're validating the reboot status above.
-                Code = '-2067919934' 
+                Code = '-2067919934'
                 resultString = 'Not Installed. System is pending a reboot.'
             }
             @{
@@ -56,7 +56,7 @@ function Get-SqlExitCodes
             }
         )
     }
-    
+
     if ($Product -eq 'ReportServer')
     {
         $ExitCodes += @(

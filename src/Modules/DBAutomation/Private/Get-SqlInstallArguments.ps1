@@ -6,7 +6,19 @@ function Get-SqlInstallArguments
         [Parameter(Mandatory = $true)]
         [ValidateSet('SqlServer', 'SSMS', 'ReportServer')]
         [Products]
-        $Product
+        $Product,
+
+        [Parameter()]
+        [int]
+        $MajorVersion,
+
+        [Parameter()]
+        [string]
+        $Mode = 'Update',
+
+        [Parameter()]
+        [string]
+        $InstallPath
     )
 
     if ($Product -eq 'SqlServer')
@@ -17,6 +29,26 @@ function Get-SqlInstallArguments
             '/Action=Patch',
             '/Q'
         )
+    }
+    elseif ($Product -eq 'SSMS' -and $MajorVersion -ge 21)
+    {
+        $InstallArguments = @()
+        if ($Mode -eq 'Update')
+        {
+            $InstallArguments += @('update')
+        }
+        $InstallArguments += @(
+            '--noWeb',
+            '--quiet',
+            '--wait',
+            '--norestart'
+        )
+
+        if ($false -eq [string]::IsNullOrWhiteSpace($InstallPath))
+        {
+            $InstallArguments += @('--installPath')
+            $InstallArguments += @($InstallPath)
+        }
     }
     elseif ($Product -eq 'SSMS')
     {
@@ -34,6 +66,6 @@ function Get-SqlInstallArguments
             '/norestart'
         )
     }
-    
+
     return $InstallArguments
 }

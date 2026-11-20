@@ -1,4 +1,5 @@
-enum Products {
+enum Products
+{
     SqlServer
     ADS
     SSMS
